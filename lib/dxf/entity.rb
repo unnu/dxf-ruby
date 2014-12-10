@@ -11,6 +11,7 @@ module DXF
 
     include ClusterFactory
 
+    attr_accessor :color
     attr_accessor :handle
     attr_accessor :layer
     attr_accessor :ext_data
@@ -35,6 +36,8 @@ module DXF
         handle = value
       when '8'
         layer = value
+      when '62'
+        color = value.to_i
       when '1000'
         ext_data = value
       when '1001'
