@@ -113,6 +113,14 @@ module DXF
     end
   end
 
+  class Polyline < Entity
+    attr_accessor :points
+
+    def initialize
+      @points = []
+    end
+  end
+
   class LWPolyline < Entity
     # @!attribute points
     # @return [Array<Point>] The points that make up the polyline

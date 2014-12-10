@@ -58,7 +58,14 @@ describe DXF::Parser do
     text.rotation.must_equal 35.0
   end
 
-  it 'must work with a complete file' do
-    #parser = File.open('test/fixtures/pol_4270_f6_601.dxf', 'r') {|f| DXF::Parser.new.parse(f) }
+  it 'must parse a file with a polyline' do
+    parser = File.open('test/fixtures/polyline.dxf', 'r') {|f| DXF::Parser.new.parse(f) }
+    parser.entities.length.must_equal 1
+    polyline = parser.entities.last
+    polyline.must_be_instance_of(DXF::Polyline)
+    polyline.points.length.must_equal 3
+    polyline.points[0].must_equal Geometry::Point[1,2,3]
+    polyline.points[1].must_equal Geometry::Point[10,20,30]
+    polyline.points[2].must_equal Geometry::Point[-1,-2,-3]
   end
 end

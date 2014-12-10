@@ -87,7 +87,7 @@ module DXF
       parse_pairs io do |code, value|
         if 0 == code.to_i
           if parser
-            entities.push parser.to_entity
+            parser.append(entities)
             parser = nil
           end
 
@@ -98,6 +98,12 @@ module DXF
             parser = EntityParser.new(value)
           elsif 'SPLINE' == value
             parser = SplineParser.new
+          elsif 'POLYLINE' == value
+            parser = PolylineParser.new
+          elsif 'VERTEX' == value
+            parser = VertexParser.new
+          elsif 'SEQEND' == value
+            parser = EntityParser.new(value)
           else
             entities.push Entity.new(value)
           end
@@ -177,6 +183,10 @@ module DXF
       when 'LWPOLYLINE' then LWPolyline.new(*points)
       end
     end
+
+    def append(entities)
+      entities.push to_entity
+    end
   end
 
   class SplineParser < EntityParser
@@ -243,6 +253,57 @@ module DXF
       else
         Spline.new degree:degree, knots:knots, points:points
       end
+    end
+  end
+
+  class PolylineParser < EntityParser
+    attr_accessor :points
+
+    def initialize
+      super 'POLYLINE'
+    end
+
+    def parse_pair(code, value)
+      case code
+      when 70
+        value = value.to_i
+        @closed = value[0].zero? ? nil : true
+        @curvefit = value[1].zero? ? nil : true
+        @splinefit = value[2].zero? ? nil : true
+        @zpolyline = value[3].zero? ? nil : true
+        @zmesh = value[4].zero? ? nil : true
+        @nclosed = value[5].zero? ? nil : true
+        @polyface = value[6].zero? ? nil : true
+        @continuous = value[7].zero? ? nil : true
+      else
+        super
+      end
+    end
+
+    def to_entity
+      Polyline.new
+    end
+  end
+
+  class VertexParser < EntityParser
+    attr_accessor :x, :y, :z
+
+    def initialize
+      super 'VERTEX'
+    end
+
+    def parse_pair(code, value)
+      case code
+      when 10 then @x = value.to_f
+      when 20 then @y = value.to_f
+      when 30 then @z = value.to_f
+      else
+        super
+      end
+    end
+
+    def append(entities)
+      entities.last.points << Geometry::Point[x,y,z]
     end
   end
 end
