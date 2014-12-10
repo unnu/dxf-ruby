@@ -3,8 +3,6 @@ require 'geometry'
 require_relative 'cluster_factory'
 
 module DXF
-  Point = Geometry::Point
-
   # {Entity} is the base class for everything that can live in the ENTITIES block
   class Entity
     TypeError = Class.new(StandardError)
@@ -21,6 +19,7 @@ module DXF
       case type
       when 'CIRCLE' then Circle.new
       when 'LINE' then Line.new
+      when 'POINT' then Point.new
       when 'SPLINE' then Spline.new
       when 'TEXT' then Text.new
       else
@@ -51,6 +50,26 @@ module DXF
 
     def point_from_values(*args)
       Geometry::Point[args.flatten.reverse.drop_while {|a| not a }.reverse]
+    end
+  end
+
+  class Point < Entity
+    attr_accessor :x, :y, :z
+
+    def parse_pair(code, value)
+      case code
+      when '10' then self.x = value.to_f
+      when '20' then self.y = value.to_f
+      when '30' then self.z = value.to_f
+      else
+        super
+      end
+    end
+
+    def point
+      a = [x, y, z]
+      a.pop until a.last
+      Geometry::Point[*a]
     end
   end
 
@@ -127,7 +146,7 @@ module DXF
     attr_reader :points
 
     def initialize(*points)
-      @points = points.map {|a| Point[a]}
+      @points = points.map {|a| Geometry::Point[a]}
     end
 
     # Return the individual line segments
