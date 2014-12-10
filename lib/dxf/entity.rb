@@ -21,6 +21,7 @@ module DXF
       when 'CIRCLE' then Circle.new
       when 'LINE' then Line.new
       when 'SPLINE' then Spline.new
+      when 'TEXT' then Text.new
       else
         raise TypeError, "Unrecognized entity type '#{type}'"
       end
@@ -170,6 +171,34 @@ module DXF
     # Convert the {Bezier} into the given number of line segments
     def lines(count=20)
       (0..1).step(1.0/count).map {|t| self[t]}.each_cons(2).map {|a,b| Line.new a, b}
+    end
+  end
+
+  class Text < Entity
+    attr_accessor :value
+    attr_accessor :height
+    attr_accessor :ratio
+    attr_accessor :rotation
+    attr_accessor :x, :y, :z
+
+    def parse_pair(code, value)
+      case code
+      when '1' then self.value = value
+      when '10' then self.x = value.to_f
+      when '20' then self.y = value.to_f
+      when '30' then self.z = value.to_f
+      when '40' then self.height = value.to_f
+      when '41' then self.ratio = value.to_f
+      when '50' then self.rotation = value.to_f
+      else
+        super # Handle common and unrecognized codes
+      end
+    end
+
+    def position
+      a = [x, y, z]
+      a.pop until a.last
+      Geometry::Point[*a]
     end
   end
 end
