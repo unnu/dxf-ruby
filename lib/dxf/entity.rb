@@ -26,7 +26,7 @@ module DXF
 
     def parse_pair(code, value)
       # Handle group codes that are common to all entities
-      #  These are from the table that starts on page 70 of specification
+      # These are from the table that starts on page 70 of specification
       case code
       when '5'
         handle = value
@@ -50,17 +50,17 @@ module DXF
 
     def parse_pair(code, value)
       case code
-      when '10'   then self.x = value.to_f
-      when '20'   then self.y = value.to_f
-      when '30'   then self.z = value.to_f
-      when '40'   then self.radius = value.to_f
+      when '10' then self.x = value.to_f
+      when '20' then self.y = value.to_f
+      when '30' then self.z = value.to_f
+      when '40' then self.radius = value.to_f
       else
         super # Handle common and unrecognized codes
       end
     end
 
     # @!attribute [r] center
-    #   @return [Point]  the composed center of the {Circle}
+    # @return [Point] the composed center of the {Circle}
     def center
       a = [x, y, z]
       a.pop until a.last
@@ -75,12 +75,12 @@ module DXF
 
     def parse_pair(code, value)
       case code
-      when '10'   then self.x1 = value.to_f
-      when '20'   then self.y1 = value.to_f
-      when '30'   then self.z1 = value.to_f
-      when '11'   then self.x2 = value.to_f
-      when '21'   then self.y2 = value.to_f
-      when '31'   then self.z2 = value.to_f
+      when '10' then self.x1 = value.to_f
+      when '20' then self.y1 = value.to_f
+      when '30' then self.z1 = value.to_f
+      when '11' then self.x2 = value.to_f
+      when '21' then self.y2 = value.to_f
+      when '31' then self.z2 = value.to_f
       else
         super # Handle common and unrecognized codes
       end
@@ -91,13 +91,13 @@ module DXF
     end
 
     # @!attribute [r] first
-    #   @return [Point]  the starting point of the {Line}
+    # @return [Point] the starting point of the {Line}
     def first
       @first ||= point_from_values(x1, y1, z1)
     end
 
     # @!attribute [r] last
-    #   @return [Point]  the end point of the {Line}
+    # @return [Point] the end point of the {Line}
     def last
       @last ||= point_from_values(x2, y2, z2)
     end
@@ -105,7 +105,7 @@ module DXF
 
   class LWPolyline < Entity
     # @!attribute points
-    #   @return [Array<Point>]  The points that make up the polyline
+    # @return [Array<Point>] The points that make up the polyline
     attr_reader :points
 
     def initialize(*points)
@@ -132,13 +132,13 @@ module DXF
 
   class Bezier < Spline
     # @!attribute degree
-    #   @return [Number]  The degree of the curve
+    # @return [Number] The degree of the curve
     def degree
       points.length - 1
     end
 
     # @!attribute points
-    #   @return [Array<Point>]  The control points for the Bézier curve
+    # @return [Array<Point>] The control points for the Bézier curve
     attr_reader :points
 
     def initialize(*points)
@@ -151,7 +151,7 @@ module DXF
       (0...k).inject(1) {|m,i| (m * (degree - i)) / (i + 1) }
     end
 
-    # @param t [Float]  the input parameter
+    # @param t [Float] the input parameter
     def [](t)
       return nil unless (0..1).include?(t)
       result = Geometry::Point.zero(points.first.size)

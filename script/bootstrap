@@ -1,0 +1,48 @@
+#!/bin/bash
+
+cd $(dirname $0)/..
+
+echo ""
+echo "Let's check the system dependencies..."
+echo ""
+
+if ! $(which ruby > /dev/null 2>&1)
+then
+  echo "  x You need to install Ruby:"
+  echo "    https://github.com/sstephenson/rbenv"
+  exit 3
+else
+  echo "  + Ruby found."
+fi
+
+if ! $(which bundle > /dev/null 2>&1)
+then
+  echo "  x You need to install Bundler:"
+  echo "    gem install bundler"
+  exit 3
+else
+  echo "  + Bundler found."
+fi
+
+echo ""
+echo "Now let's install the ruby dependencies..."
+echo ""
+
+rm -rf .bundle
+mkdir .bundle
+
+if ! $(bundle check > /dev/null 2>&1)
+then
+  echo "  x Gems not up to date, we will install gems."
+  bundle install
+  if [ $? -ne 0 ]
+  then
+    echo "  x There was a problem installing gems."
+    echo "    bundle install"
+    exit 3
+  else
+    echo "  + Gems updated successfully."
+  fi
+else
+  echo "  + Gems up to date."
+fi
