@@ -13,6 +13,8 @@ module DXF
 
     attr_accessor :handle
     attr_accessor :layer
+    attr_accessor :ext_data
+    attr_accessor :ext_app_name
 
     def self.new(type)
       case type
@@ -32,6 +34,10 @@ module DXF
         handle = value
       when '8'
         layer = value
+      when '1000'
+        ext_data = value
+      when '1001'
+        ext_app_name = value
       else
         p "Unrecognized entity group code: #{code} #{value}"
       end
