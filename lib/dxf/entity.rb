@@ -133,9 +133,11 @@ module DXF
   end
 
   class Polyline < Entity
+    attr_reader :closed
     attr_accessor :points
 
-    def initialize
+    def initialize(closed)
+      @closed = closed
       @points = []
     end
   end

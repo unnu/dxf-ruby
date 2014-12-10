@@ -281,7 +281,7 @@ module DXF
     end
 
     def to_entity
-      Polyline.new
+      Polyline.new(@closed)
     end
   end
 
