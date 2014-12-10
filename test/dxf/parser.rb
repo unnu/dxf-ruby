@@ -45,4 +45,27 @@ describe DXF::Parser do
     parser.entities.length.must_equal 82
     parser.entities.all? {|a| a.kind_of? DXF::Spline }.must_equal true
   end
+
+  it 'must parse a file with a text' do
+    parser = File.open('test/fixtures/text.dxf', 'r') {|f| DXF::Parser.new.parse(f) }
+    parser.entities.length.must_equal 1
+    text = parser.entities.last
+    text.must_be_instance_of(DXF::Text)
+    text.position.must_equal Geometry::Point[2,3,4]
+    text.height.must_equal 10
+    text.value.must_equal "Some Text"
+    text.ratio.must_equal 1.0
+    text.rotation.must_equal 35.0
+  end
+
+  it 'must parse a file with a polyline' do
+    parser = File.open('test/fixtures/polyline.dxf', 'r') {|f| DXF::Parser.new.parse(f) }
+    parser.entities.length.must_equal 1
+    polyline = parser.entities.last
+    polyline.must_be_instance_of(DXF::Polyline)
+    polyline.points.length.must_equal 3
+    polyline.points[0].must_equal Geometry::Point[1,2,3]
+    polyline.points[1].must_equal Geometry::Point[10,20,30]
+    polyline.points[2].must_equal Geometry::Point[-1,-2,-3]
+  end
 end

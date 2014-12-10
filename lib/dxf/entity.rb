@@ -3,22 +3,25 @@ require 'geometry'
 require_relative 'cluster_factory'
 
 module DXF
-  Point = Geometry::Point
-
   # {Entity} is the base class for everything that can live in the ENTITIES block
   class Entity
     TypeError = Class.new(StandardError)
 
     include ClusterFactory
 
+    attr_accessor :color
     attr_accessor :handle
     attr_accessor :layer
+    attr_accessor :ext_data
+    attr_accessor :ext_app_name
 
     def self.new(type)
       case type
       when 'CIRCLE' then Circle.new
       when 'LINE' then Line.new
+      when 'POINT' then Point.new
       when 'SPLINE' then Spline.new
+      when 'TEXT' then Text.new
       else
         raise TypeError, "Unrecognized entity type '#{type}'"
       end
@@ -32,6 +35,12 @@ module DXF
         handle = value
       when '8'
         layer = value
+      when '62'
+        color = value.to_i
+      when '1000'
+        ext_data = value
+      when '1001'
+        ext_app_name = value
       else
         p "Unrecognized entity group code: #{code} #{value}"
       end
@@ -41,6 +50,26 @@ module DXF
 
     def point_from_values(*args)
       Geometry::Point[args.flatten.reverse.drop_while {|a| not a }.reverse]
+    end
+  end
+
+  class Point < Entity
+    attr_accessor :x, :y, :z
+
+    def parse_pair(code, value)
+      case code
+      when '10' then self.x = value.to_f
+      when '20' then self.y = value.to_f
+      when '30' then self.z = value.to_f
+      else
+        super
+      end
+    end
+
+    def point
+      a = [x, y, z]
+      a.pop until a.last
+      Geometry::Point[*a]
     end
   end
 
@@ -103,13 +132,21 @@ module DXF
     end
   end
 
+  class Polyline < Entity
+    attr_accessor :points
+
+    def initialize
+      @points = []
+    end
+  end
+
   class LWPolyline < Entity
     # @!attribute points
     # @return [Array<Point>] The points that make up the polyline
     attr_reader :points
 
     def initialize(*points)
-      @points = points.map {|a| Point[a]}
+      @points = points.map {|a| Geometry::Point[a]}
     end
 
     # Return the individual line segments
@@ -164,6 +201,34 @@ module DXF
     # Convert the {Bezier} into the given number of line segments
     def lines(count=20)
       (0..1).step(1.0/count).map {|t| self[t]}.each_cons(2).map {|a,b| Line.new a, b}
+    end
+  end
+
+  class Text < Entity
+    attr_accessor :value
+    attr_accessor :height
+    attr_accessor :ratio
+    attr_accessor :rotation
+    attr_accessor :x, :y, :z
+
+    def parse_pair(code, value)
+      case code
+      when '1' then self.value = value
+      when '10' then self.x = value.to_f
+      when '20' then self.y = value.to_f
+      when '30' then self.z = value.to_f
+      when '40' then self.height = value.to_f
+      when '41' then self.ratio = value.to_f
+      when '50' then self.rotation = value.to_f
+      else
+        super # Handle common and unrecognized codes
+      end
+    end
+
+    def position
+      a = [x, y, z]
+      a.pop until a.last
+      Geometry::Point[*a]
     end
   end
 end
