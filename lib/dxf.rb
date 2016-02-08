@@ -11,6 +11,7 @@ Reading and writing of files using AutoCAD's {http://en.wikipedia.org/wiki/AutoC
   # @param [String] filename The path to the file to read
   # @return [DXF] the resulting {DXF} object
   def self.read(filename)
+    # File.open(filename, 'r:iso-8859-1') {|f| DXF::Parser.new.parse(f) }
     File.open(filename, 'r') {|f| DXF::Parser.new.parse(f) }
   end
 end

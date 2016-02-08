@@ -9,41 +9,111 @@ module DXF
 
     include ClusterFactory
 
+    attr_accessor :x, :y, :z
+
+    attr_accessor :type
+    attr_accessor :parser
+    attr_accessor :data
+
     attr_accessor :color
     attr_accessor :handle
+    attr_accessor :name
     attr_accessor :layer
+    attr_accessor :line_type
+    attr_accessor :line_weight
+    attr_accessor :soft_pointer
+    attr_accessor :owner
+    attr_accessor :subclass_marker
     attr_accessor :ext_data
     attr_accessor :ext_app_name
 
-    def self.new(type)
-      case type
+    def self.new(type, parser)
+      entity = case type
       when 'CIRCLE' then Circle.new
       when 'LINE' then Line.new
       when 'POINT' then Point.new
       when 'SPLINE' then Spline.new
       when 'TEXT' then Text.new
+      when 'MTEXT' then MText.new
+      when 'ATTRIB' then Attribute.new
+      when 'INSERT' then Insert.new
+      when 'BLOCK' then Block.new
+      when 'BLOCK_RECORD' then BlockRecord.new
       else
-        raise TypeError, "Unrecognized entity type '#{type}'"
+        super()
+        # raise TypeError, "Unrecognized entity type '#{type}'"
       end
+
+      entity.type = type
+      entity.parser = parser
+      entity.data = []
+      entity
     end
 
     def parse_pair(code, value)
+      self.data << [code, value]
       # Handle group codes that are common to all entities
       # These are from the table that starts on page 70 of specification
-      case code
-      when '5'
-        handle = value
-      when '8'
-        layer = value
-      when '62'
-        color = value.to_i
-      when '1000'
-        ext_data = value
-      when '1001'
-        ext_app_name = value
+      case code.to_i
+      when 2
+        self.name = value
+      when 5
+        self.handle = value
+      when 6
+        self.line_type = value
+      when 8
+        self.layer = value
+      when 10 then
+        self.x = value.to_f
+      when 20 then
+        self.y = value.to_f
+      when 30 then
+        self.z = value.to_f
+      when 62
+        self.color = value.to_i
+      when 100
+        self.subclass_marker = value
+      when 330..339
+        self.soft_pointer = value
+      when 360
+        self.owner = value
+      when 370..379
+        self.line_weight = value
+      when 1000
+        self.ext_data = value
+      when 1001
+        self.ext_app_name = value
       else
-        p "Unrecognized entity group code: #{code} #{value}"
+        p "Unrecognized entity group code for type #{type}: (#{code}) #{value}"
       end
+    end
+
+    def siblings
+      parser.references[soft_pointer]
+    end
+
+    def children
+      parser.references[handle]
+    end
+
+    def attributes
+      children.select {|s| s.is_a? Attribute }
+    end
+
+    def point
+      a = [x, y, z].compact
+      return Point.zero if a.empty?
+
+      Geometry::Point[*a]
+    end
+
+    def distance(other)
+      return unless other
+
+      xd = x - other.x
+      yd = y - other.y
+      zd = z - other.z
+      Math.sqrt(xd * xd + yd * yd + zd * zd)
     end
 
     private
@@ -53,24 +123,60 @@ module DXF
     end
   end
 
-  class Point < Entity
-    attr_accessor :x, :y, :z
+  class Block < Entity
+    attr_accessor :xref
 
     def parse_pair(code, value)
-      case code
-      when '10' then self.x = value.to_f
-      when '20' then self.y = value.to_f
-      when '30' then self.z = value.to_f
+      case code.to_i
+      when 1 then self.xref = value
+      when 3
+        # ignore block name. Set in 2.
+      else
+        super
+      end
+    end
+  end
+
+  class BlockRecord < Entity
+  end
+
+  class Attribute < Entity
+    attr_accessor :default
+    attr_accessor :tag
+
+    def parse_pair(code, value)
+      case code.to_i
+      when 1 then self.default = value
+      when 2 then self.tag = value
+      else
+        super
+      end
+    end
+  end
+
+  class Insert < Entity
+    attr_accessor :block_name
+    attr_accessor :attributes_present
+
+    def parse_pair(code, value)
+      case code.to_i
+      when 2 then self.block_name = value
+      when 66 then self.attributes_present = value == '1'
       else
         super
       end
     end
 
-    def point
-      a = [x, y, z]
-      a.pop until a.last
-      Geometry::Point[*a]
+    def attributes
+      parser.entities.compact.select {|e| e.soft_pointer == handle }
     end
+
+    def block
+      parser.object_names[block_name]
+    end
+  end
+
+  class Point < Entity
   end
 
   class Circle < Entity
@@ -79,9 +185,6 @@ module DXF
 
     def parse_pair(code, value)
       case code
-      when '10' then self.x = value.to_f
-      when '20' then self.y = value.to_f
-      when '30' then self.z = value.to_f
       when '40' then self.radius = value.to_f
       else
         super # Handle common and unrecognized codes
@@ -91,9 +194,7 @@ module DXF
     # @!attribute [r] center
     # @return [Point] the composed center of the {Circle}
     def center
-      a = [x, y, z]
-      a.pop until a.last
-      Geometry::Point[*a]
+      point
     end
   end
 
@@ -231,6 +332,26 @@ module DXF
       a = [x, y, z]
       a.pop until a.last
       Geometry::Point[*a]
+    end
+  end
+
+  class MText < Text
+    attr_accessor :style
+    attr_accessor :cleaned
+
+    def value=(value)
+      self.cleaned = value.dup
+      self.cleaned.gsub!(/\\(\w).*?(.*?)(;|$)/, "") # remove commands
+      self.cleaned.gsub!(/[{}]/, "") # remove groups
+      super(value)
+    end
+
+    def parse_pair(code, value)
+      case code
+      when '7' then self.style = value
+      else
+        super
+      end
     end
   end
 end
