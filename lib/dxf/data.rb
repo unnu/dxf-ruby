@@ -22,7 +22,7 @@ module DXF
       stream
     end
 
-    def change_single(marker, code, value)
+    def change(marker, code, value)
       sub_data = @data[marker] ||= []
       pair = sub_data.find {|pair| pair.first == code}
       if pair

@@ -10,7 +10,7 @@ module DXF
       @marker = marker
       @code = code
       @name = name
-      @serializer = serializer || Proc.new {|object, data| data.change_single(marker, code, object.send(name)) }
+      @serializer = serializer || Proc.new {|object, data| data.change(marker, code, object.send(name)) }
       @deserializer = deserializer || Proc.new {|object, value| object.send("#{name}=", value) }
     end
 

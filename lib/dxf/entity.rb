@@ -12,7 +12,7 @@ module DXF
     TypeError = Class.new(StandardError)
 
     def self.inherited(subclass)
-      @fields = subclass.fields.dup
+      subclass.fields = fields.dup
       super
     end
 
@@ -24,12 +24,16 @@ module DXF
 
     def self.field(code, name, &block)
       attr_accessor name
-      fields[code] = block || Field.new(@marker, code, name, nil, block)
+      fields[code] = Field.new(@marker, code, name, nil, block)
     end
 
     class << self
       def fields
         @fields ||= {}
+      end
+
+      def fields=(fields)
+        @fields = fields
       end
     end
 
@@ -40,34 +44,17 @@ module DXF
     attr_accessor :type
     attr_accessor :parser
     attr_accessor :data
-
-    attr_accessor :color
-    attr_accessor :name
-    attr_accessor :handle
-    attr_accessor :space
-    attr_accessor :rotation_angle
-    attr_accessor :scale_x, :scale_y, :scale_z
-    attr_accessor :line_type
-    attr_accessor :line_weight
-    attr_accessor :soft_pointer
-    attr_accessor :hard_pointer
-    attr_accessor :soft_pointer_owner
-    attr_accessor :hard_pointer_owner
-    attr_accessor :subclass_marker
-    attr_accessor :ext_data
-    attr_accessor :ext_app_name
     attr_accessor :acad
-    attr_accessor :transparency
 
     def self.create(type, parser)
       object = case type
       when 'CIRCLE' then Circle.new
       when 'LINE' then Line.new
-      when 'POINT' then Point.new
       when 'SPLINE' then Spline.new
       when 'TEXT' then Text.new
       when 'MTEXT' then MText.new
       when 'ATTRIB' then Attribute.new
+      when 'ATTDEF' then AttributeDefinition.new
       when 'SEQEND' then EndSequence.new
       when 'INSERT' then Insert.new
       when 'BLOCK' then Block.new
@@ -77,6 +64,7 @@ module DXF
       when 'TABLE' then Table.new
       when 'ENDTAB' then EndTable.new
       when 'CLASS' then Klass.new
+      when 'LAYER' then Layer.new
       else
         self.new
         # raise TypeError, "Unrecognized object type '#{type}'"
@@ -95,48 +83,7 @@ module DXF
         return
       end
 
-      case code.to_i
-      when 2
-        self.name = value
-      when 5
-        self.handle = value
-      when 6
-        self.line_type = value
-      when 41
-        self.scale_x = value
-      when 42
-        self.scale_y = value
-      when 43
-        self.scale_z = value
-      when 50
-        self.rotation_angle = value
-      when 62
-        self.color = value.to_i
-      when 67
-        self.space = value == '1' ? :paper : :model
-      when 100
-        self.subclass_marker = value
-      when 102
-        self.acad << value
-      when 330..339
-        self.soft_pointer = value
-      when 340..349
-        self.hard_pointer = value
-      when 350..359
-        self.soft_pointer_owner = value
-      when 360..369
-        self.hard_pointer_owner = value
-      when 370..379
-        self.line_weight = value
-      when 440
-        self.transparency = value
-      when 1000
-        self.ext_data = value
-      when 1001
-        self.ext_app_name = value
-      else
-        p "Unrecognized object group code for type #{type}: (#{code}) #{value}"
-      end
+      # p "Unrecognized object group code for type #{type}: (#{code}) #{value}"
     end
 
     def siblings
@@ -166,8 +113,17 @@ module DXF
   end
 
   class Entity < Object
+    field 5, :handle
+    field 330, :soft_pointer
+
     marker 'AcDbEntity' do
-      field 8, :layer
+      field 8, :layer_name
+    end
+  end
+
+  class Layer < Object
+    marker 'AcDbLayerTableRecord' do
+      field 2, :name
     end
   end
 
@@ -195,18 +151,14 @@ module DXF
                       decameter hectometer gigameter astronomical-unit
                       light-year parsec)
 
-    attr_accessor :explodability
-    attr_accessor :scalability
-    attr_accessor :insert_units
+    field 5, :handle
 
-    def parse_pair(code, value)
-      case code.to_i
-      when 70 then self.insert_units = INSERT_UNITS[value - 1]
-      when 280 then self.explodability = value
-      when 281 then self.scalability = value
-      else
-        super
-      end
+    marker'AcDbBlockTableRecord' do
+      field 2, :name
+      field 70, :insertation_units
+      field 340, :hard_pointer
+      field 280, :explodability
+      field 281, :scalability
     end
   end
 
@@ -218,10 +170,23 @@ module DXF
     end
   end
 
+  class AttributeDefinition < Object
+    marker 'AcDbText' do
+      include HasPoint
+      field 1,   :default
+      field 40,  :height
+    end
+
+    marker 'AcDbAttributeDefinition' do
+      field 2, :tag
+      field 3, :prompt
+    end
+  end
+
   class EndSequence < Object
   end
 
-  class Insert < Object
+  class Insert < Entity
     marker 'AcDbBlockReference' do
       field 66, :attributes_follow
       field 2, :block_name
@@ -235,10 +200,6 @@ module DXF
     def block
       parser.object_names[block_name]
     end
-  end
-
-  class Point < Object
-    include HasPoint
   end
 
   class Table < Object
@@ -261,36 +222,10 @@ module DXF
     end
   end
 
-  class Line < Object
-    include HasPoint
-
-    attr_reader :first, :last
-    attr_accessor :x2, :y2, :z2
-
-    def parse_pair(code, value)
-      case code
-      when '11' then self.x2 = value.to_f
-      when '21' then self.y2 = value.to_f
-      when '31' then self.z2 = value.to_f
-      else
-        super # Handle common and unrecognized codes
-      end
-    end
-
-    def initialize(*args)
-      @first, @last = *args
-    end
-
-    # @!attribute [r] first
-    # @return [Point] the starting point of the {Line}
-    def first
-      @first ||= point
-    end
-
-    # @!attribute [r] last
-    # @return [Point] the end point of the {Line}
-    def last
-      @last ||= point_from_values(x2, y2, z2)
+  class Line < Entity
+    marker 'AcDbLine' do
+      field 39, :thickness
+      include HasPoint
     end
   end
 
@@ -373,68 +308,29 @@ module DXF
   end
 
   class Text < Object
-    include HasPoint
-
     marker 'AcDbText' do
+      include HasPoint
       field 1,   :default
       field 40,  :height
     end
-
-    attr_accessor :value
-    attr_accessor :ratio
-    attr_accessor :rotation
-
-    def parse_pair(code, value)
-      case code.to_i
-      when 1 then self.value = value
-      when 41 then self.ratio = value.to_f
-      when 50 then self.rotation = value.to_f
-      else
-        super # Handle common and unrecognized codes
-      end
-    end
   end
 
-  class MText < Text
+  class MText < Entity
     ALIGNMENTS = %i(top_left top_center top_right
                    middle_left middle_center middle_right
                    bottom_left bottom_center bottom_right)
     DIRECTIONS = %i(left_to_right top_to_bottom by_style)
     SPACING_STYLE = %i(at_least exact)
 
-    include HasPoint
-
-    attr_accessor :style
-    attr_accessor :alignment
-    attr_accessor :height
-    attr_accessor :spacing
-    attr_accessor :spacing_style
-    attr_accessor :scale
-    attr_accessor :direction
-    attr_accessor :cleaned
-
-    def value=(value)
-      self.cleaned = value.dup
-      self.cleaned.gsub!(/\\(\w).*?(.*?)(;|$)/, "") # remove commands
-      self.cleaned.gsub!(/[{}]/, "") # remove groups
-      super(value)
+    marker 'AcDbMText' do
+      include HasPoint
+      field 1, :text
     end
 
-    def parse_pair(code, value)
-      case code.to_i
-      when 7 then self.style = value
-      when 43 then self.height = value
-      when 44 then self.spacing = value
-      when 46 then self.scale = value
-      when 71
-        self.alignment = ALIGNMENTS[value - 1]
-      when 72
-        self.direction = DIRECTIONS[value - 1]
-      when 73
-        self.spacing_style = SPACING_STYLE[value - 1]
-      else
-        super
-      end
+    def cleaned
+      text
+        .gsub(/\\(\w).*?(.*?)(;|$)/, "") # remove commands
+        .gsub!(/[{}]/, "") # remove groups
     end
   end
 

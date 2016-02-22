@@ -48,8 +48,8 @@ module DXF
     private
 
     def indicate(object)
-      @object_names[object.name] = object if object.name
-      @references[object.soft_pointer] << object if object.soft_pointer
+      @object_names[object.name] = object if object.respond_to?(:name) && object.name
+      @references[object.soft_pointer] << object if object.respond_to?(:soft_pointer) && object.soft_pointer
       @types[object.class] << object
     end
 
