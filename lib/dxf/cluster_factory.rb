@@ -9,6 +9,7 @@ module ClusterFactory
         class << subclass
           alias :new :original_new
         end
+        super
       end
     end
   end

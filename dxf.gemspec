@@ -17,6 +17,8 @@ Gem::Specification.new do |gem|
   gem.require_paths = ["lib"]
 
   gem.add_dependency 'geometry', '~> 6.4'
+  gem.add_dependency 'pry'
+  gem.add_dependency 'activesupport'
   gem.add_development_dependency 'rake'
 
   gem.required_ruby_version = '>= 2.0'

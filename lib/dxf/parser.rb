@@ -1,27 +1,34 @@
 require_relative 'entity'
+require_relative 'variable'
 
 module DXF
   class Parser
     ParseError = Class.new(StandardError)
 
     attr_accessor :header
+    attr_accessor :klasses
     attr_accessor :tables
     attr_accessor :blocks
     attr_accessor :entities
-
     attr_accessor :objects
+    attr_accessor :acdsdata
+
     attr_accessor :object_names
     attr_accessor :references
+    attr_accessor :types
 
     def initialize(units=:mm)
       @header = {}
+      @klasses = []
+      @tables = []
       @blocks = []
       @entities = []
-      @tables = []
+      @objects = []
+      @acdsdata = []
 
-      @objects = Hash.new
       @object_names = Hash.new
       @references = Hash.new {|h, k| h[k] = [] }
+      @types = Hash.new {|h, k| h[k] = [] }
     end
 
     def parse(io)
@@ -31,7 +38,6 @@ module DXF
         raise ParseError, "Expecting a SECTION, not #{value}" unless 'SECTION' == value
         parse_section(io)
       end
-      build_index
       self
     end
 
@@ -39,28 +45,26 @@ module DXF
       "Parser"
     end
 
-    def build_index
-      %w(blocks entities tables).each do |section|
-        public_send(section).each do |object|
-          @objects[object.handle] = object if object.handle
-          @object_names[object.name] = object if object.name
-          @references[object.soft_pointer] << object if object.soft_pointer
-        end
-      end
-    end
-
     private
+
+    def indicate(object)
+      @object_names[object.name] = object if object.name
+      @references[object.soft_pointer] << object if object.soft_pointer
+      @types[object.class] << object
+    end
 
     def read_pair(io)
       code = io.gets.strip
       value = io.gets.strip.encode('UTF-8')
       value = case code.to_i
-              when 1..9
+              when 0..9
                 value.to_s
               when 10..18, 20..28, 30..37, 40..49
                 value.to_f
               when 50..58
                 value.to_f # degrees
+              when 66
+                value == '1'
               when 70..78, 90..99, 270..289
                 value.to_i
               else
@@ -91,33 +95,60 @@ module DXF
 
       case value
       when 'BLOCKS'
-        parse_objects(io, blocks,'ENDBLK')
-      when 'CLASSES'
-        parse_pairs(io) do |code, value|
-         # p "#{code} #{value}"
-        end
+        parse_objects(io, blocks, Block, EndBlock)
+      when 'CLASSES'  then
+        parse_objects(io, klasses)
       when 'ENTITIES'
-        parse_objects(io, entities, 'SEQEND')
+        parse_objects(io, entities)
       when 'HEADER'
         parse_header(io)
-      when 'OBJECTS'  then parse_pairs(io) {|code, value|} # Ignore until implemented
+      when 'OBJECTS'
+        parse_objects(io, objects)
       when 'TABLES'
-        parse_objects(io, tables, 'ENDTAB')
-      when 'ACDSDATA' then parse_pairs(io) {|code, value|} # Ignore until implemented
+        parse_objects(io, tables, Table, EndTable)
+      when 'ACDSDATA'
+        parse_objects(io, acdsdata)
       else
         raise ParseError, "Unrecognized section type '#{value}'"
       end
     end
 
-    def parse_objects(io, collection, end_identifier)
+    def parse_objects(io, collection, parent_class = nil, end_class = nil)
+      parent = nil
+      entity = nil
+
       parse_pairs io do |code, value|
         if 0 == code.to_i
-          next if 'ENDSEC' == value
-          next if end_identifier == value
+          if 'ENDSEC' == value
+            parent = nil
+            next
+          end
 
-          collection.push Entity.new(value, self)
+          if entity
+            indicate(entity)
+            entity = nil
+          end
+
+          entity = Object.create(value, self)
+          entity.data.push(code, value)
+
+          if end_class && entity.is_a?(end_class)
+            parent = nil
+          end
+
+          if entity.class == parent_class
+            parent = entity
+            collection << entity
+          else
+            if parent
+              parent.entries << entity
+            else
+              collection << entity
+            end
+          end
         else
-          collection.last.parse_pair(code, value)
+          entity.data.push(code, value)
+          entity.parse_pair(code, value)
         end
       end
     end
@@ -129,14 +160,13 @@ module DXF
         case code
         when '0' then next
         when '9'
-          variable_name = value
+          header[value] = Variable.new(value)
         else
-          header[variable_name] = value
+          header.values.last.parse_pair(code, value)
         end
       end
     end
 
-    # @group Helpers
     def self.code_to_symbol(code)
       case code
       when 10..13 then :x
@@ -145,13 +175,9 @@ module DXF
       end
     end
 
-    def self.update_point(point, x:nil, y:nil, z:nil)
-      a = point ? point.to_a : []
-      a[0] = x if x
-      a[1] = y if y
-      a[2] = z if z
-      Geometry::Point[a]
+    def create_handle
+      handle_int = header['$HANDSEED'].value.to_i(16)
+      header['$HANDSEED'].value = (handle_int + 1).to_s(16)
     end
-    # @endgroup
   end
 end

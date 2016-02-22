@@ -1,4 +1,5 @@
 require_relative 'dxf/parser'
+require_relative 'dxf/unparser'
 
 module DXF
 =begin
@@ -13,5 +14,9 @@ Reading and writing of files using AutoCAD's {http://en.wikipedia.org/wiki/AutoC
   def self.read(filename)
     # File.open(filename, 'r:iso-8859-1') {|f| DXF::Parser.new.parse(f) }
     File.open(filename, 'r') {|f| DXF::Parser.new.parse(f) }
+  end
+
+  def self.write(filename, dxf)
+    File.open(filename, 'w') {|f| DXF::Unparser.new.unparse(f, dxf) }
   end
 end
