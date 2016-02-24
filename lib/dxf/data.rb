@@ -28,7 +28,7 @@ module DXF
       if pair
         pair[1] = value
       else
-        @data[marker] << [code, value]
+        @data[marker] << [code, value] if value
       end
     end
 
