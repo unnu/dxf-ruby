@@ -14,6 +14,7 @@ module DXF
     attr_accessor :acdsdata
 
     attr_accessor :object_names
+    attr_accessor :handles
     attr_accessor :references
     attr_accessor :types
 
@@ -27,6 +28,7 @@ module DXF
       @acdsdata = []
 
       @object_names = Hash.new
+      @handles = Hash.new
       @references = Hash.new {|h, k| h[k] = [] }
       @types = Hash.new {|h, k| h[k] = [] }
     end
@@ -49,6 +51,7 @@ module DXF
 
     def indicate(object)
       @object_names[object.name] = object if object.respond_to?(:name) && object.name
+      @handles[object.handle]    = object if object.respond_to?(:handle) && object.handle
       @references[object.soft_pointer] << object if object.respond_to?(:soft_pointer) && object.soft_pointer
       @types[object.class] << object
     end
