@@ -162,7 +162,7 @@ module DXF
     end
   end
 
-  class Attribute < Object
+  class Attribute < Entity
     include HasPoint
 
     marker 'AcDbText' do
@@ -170,7 +170,7 @@ module DXF
     end
   end
 
-  class AttributeDefinition < Object
+  class AttributeDefinition < Entity
     marker 'AcDbText' do
       include HasPoint
       field 1,   :default
@@ -189,12 +189,12 @@ module DXF
   class Insert < Entity
     marker 'AcDbBlockReference' do
       field 66, :attributes_follow
-      field 2, :block_name
+      field 2,  :block_name
       include HasPoint
     end
 
     def attributes
-      parser.entities.compact.select {|e| e.soft_pointer == handle }
+      parser.references[handle]
     end
 
     def block
@@ -210,7 +210,7 @@ module DXF
     include HasEntries
   end
 
-  class Circle < Object
+  class Circle < Entity
     include HasPoint
 
     marker 'AcDbCircle' do
@@ -229,7 +229,7 @@ module DXF
     end
   end
 
-  class Polyline < Object
+  class Polyline < Entity
     include HasPoint
 
     attr_reader :closed
@@ -241,7 +241,7 @@ module DXF
     end
   end
 
-  class LWPolyline < Object
+  class LWPolyline < Entity
     # @!attribute points
     # @return [Array<Point>] The points that make up the polyline
     attr_reader :points
@@ -256,7 +256,7 @@ module DXF
     end
   end
 
-  class Spline < Object
+  class Spline < Entity
     include HasPoint
 
     attr_reader :degree
@@ -307,7 +307,7 @@ module DXF
     end
   end
 
-  class Text < Object
+  class Text < Entity
     marker 'AcDbText' do
       include HasPoint
       field 1,   :default
@@ -324,7 +324,8 @@ module DXF
 
     marker 'AcDbMText' do
       include HasPoint
-      field 1, :text
+      field 1,  :text
+      field 41, :reference_rectangle_width
     end
 
     def cleaned
