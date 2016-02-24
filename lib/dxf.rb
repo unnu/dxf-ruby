@@ -17,6 +17,6 @@ Reading and writing of files using AutoCAD's {http://en.wikipedia.org/wiki/AutoC
   end
 
   def self.write(filename, dxf)
-    File.open(filename, 'w:UTF-8') {|f| DXF::Unparser.new.unparse(f, dxf) }
+    File.open(filename, 'w:iso-8859-1') {|f| DXF::Unparser.new.unparse(f, dxf) }
   end
 end
