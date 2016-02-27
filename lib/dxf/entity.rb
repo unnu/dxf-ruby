@@ -22,9 +22,9 @@ module DXF
       @marker = nil
     end
 
-    def self.field(code, name, default = nil)
+    def self.field(code, name, default: nil, serialize: nil, deserialize: nil)
       attr_accessor name
-      fields[code] = Field.new(@marker, code, name, default)
+      fields[code] = Field.new(@marker, code, name, default: default, serializer: serialize, deserializer: deserialize)
     end
 
     class << self
@@ -95,7 +95,7 @@ module DXF
     end
 
     def serialize
-      fields.values.each do |field|
+      fields.each do |_, field|
         field.serialize(self, data)
       end
       data.serialize
@@ -207,25 +207,40 @@ module DXF
   class Attribute < Entity
     register 'ATTRIB'
 
+    JUSTIFICATION_X = %i(left center right aligned middle fit)
+
     marker 'AcDbText' do
       include HasPoint
+      include HasPoint2
       field 1,  :default
-      field 40, :height, 1.0
+      field 7,  :style
+      field 40, :height, default: 1.0
+      field 41, :width
+      field 72, :justify_x,
+        serialize:   ->(object) { JUSTIFICATION_X.index(object.justify_x) },
+        deserialize: ->(object, value) { JUSTIFICATION_X[value] }
     end
 
     marker 'AcDbAttribute' do
       field 2,  :tag
-      field 70, :flags, 0
+      field 70, :flags, default: 0
     end
   end
 
   class AttributeDefinition < Entity
     register 'ATTDEF'
 
+    JUSTIFICATION_X = %i(left center right aligned middle fit)
+
     marker 'AcDbText' do
       include HasPoint
-      field 1,   :default
-      field 40,  :height, 1.0
+      field 1,  :default
+      field 7,  :style
+      field 40, :height, default: 1.0
+      field 41, :width
+      field 72, :justify_x,
+        serialize:   ->(object) { JUSTIFICATION_X.index(object.justify_x) },
+        deserialize: ->(object, value) { JUSTIFICATION_X[value] }
     end
 
     marker 'AcDbAttributeDefinition' do
@@ -239,9 +254,15 @@ module DXF
 
     def new_attribute(fields = {})
       attribute = Attribute.new
-      %i(height point layer_name default tag).each do |field|
-        attribute.public_send("#{field}=", fields[field] || public_send(field))
+
+      %i(justify_x width style height point layer_name default tag).each do |name|
+        attribute.public_send("#{name}=", public_send(name))
       end
+
+      fields.each do |name, value|
+        attribute.public_send("#{name}=", value)
+      end
+
       attribute
     end
   end
