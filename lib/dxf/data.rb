@@ -1,22 +1,27 @@
 module DXF
   class Data
+    attr_reader :data
 
     def initialize
       @data = {}
       @marker = nil
+      @data[@marker] = []
     end
 
     def push(code, value)
       code = code.to_i
       if code == 100
         @marker = value
+        @data[@marker] ||= []
+      else
+        @data[@marker] << [code, value]
       end
-      (@data[@marker] ||= []) << [code, value]
     end
 
     def serialize
       stream = []
-      @data.values.each do |sub_data|
+      @data.each do |marker, sub_data|
+        stream << [100, marker] if marker
         stream.concat(sub_data)
       end
       stream

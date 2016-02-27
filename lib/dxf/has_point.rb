@@ -17,6 +17,12 @@ module DXF
       end
     end
 
+    def point=(point)
+      self.x = point.x
+      self.y = point.y
+      self.z = point.z
+    end
+
     def distance(other)
       return unless other
 

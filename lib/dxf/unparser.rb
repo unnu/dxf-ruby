@@ -23,6 +23,7 @@ module DXF
           table.entries.each do |entry|
             write(entry.serialize)
           end
+          write(table.end_object.serialize) if table.end_object
         end
       end
 
@@ -32,12 +33,19 @@ module DXF
           block.entries.each do |entry|
             write(entry.serialize)
           end
+          write(block.end_object.serialize) if block.end_object
         end
       end
 
       section 'ENTITIES' do
         dxf.entities.each do |entity|
           write(entity.serialize)
+          next unless entity.respond_to? :entries
+
+          entity.entries.each do |entry|
+            write(entry.serialize)
+          end
+          write(entity.end_object.serialize) if entity.end_object
         end
       end
 

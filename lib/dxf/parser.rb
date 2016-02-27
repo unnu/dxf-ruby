@@ -13,7 +13,6 @@ module DXF
     attr_accessor :objects
     attr_accessor :acdsdata
 
-    attr_accessor :object_names
     attr_accessor :handles
     attr_accessor :references
     attr_accessor :types
@@ -27,7 +26,6 @@ module DXF
       @objects = []
       @acdsdata = []
 
-      @object_names = Hash.new
       @handles = Hash.new
       @references = Hash.new {|h, k| h[k] = [] }
       @types = Hash.new {|h, k| h[k] = [] }
@@ -43,6 +41,11 @@ module DXF
       self
     end
 
+    def create_handle
+      handle_int = header['$HANDSEED'].value.to_i(16)
+      header['$HANDSEED'].value = (handle_int + 1).to_s(16)
+    end
+
     def inspect
       "Parser"
     end
@@ -50,7 +53,6 @@ module DXF
     private
 
     def indicate(object)
-      @object_names[object.name] = object if object.respond_to?(:name) && object.name
       @handles[object.handle]    = object if object.respond_to?(:handle) && object.handle
       @references[object.soft_pointer] << object if object.respond_to?(:soft_pointer) && object.soft_pointer
       @types[object.class] << object
@@ -98,7 +100,7 @@ module DXF
 
       case value
       when 'BLOCKS'
-        parse_objects(io, blocks, Block, EndBlock)
+        parse_objects(io, blocks)
       when 'CLASSES'  then
         parse_objects(io, klasses)
       when 'ENTITIES'
@@ -108,7 +110,7 @@ module DXF
       when 'OBJECTS'
         parse_objects(io, objects)
       when 'TABLES'
-        parse_objects(io, tables, Table, EndTable)
+        parse_objects(io, tables)
       when 'ACDSDATA'
         parse_objects(io, acdsdata)
       else
@@ -116,7 +118,7 @@ module DXF
       end
     end
 
-    def parse_objects(io, collection, parent_class = nil, end_class = nil)
+    def parse_objects(io, collection)
       parent = nil
       entity = nil
 
@@ -124,6 +126,7 @@ module DXF
         if 0 == code.to_i
           if 'ENDSEC' == value
             parent = nil
+            end_parent = nil
             next
           end
 
@@ -134,12 +137,19 @@ module DXF
 
           entity = Object.create(value, self)
           entity.data.push(code, value)
+          entity.parse_pair(code, value)
 
-          if end_class && entity.is_a?(end_class)
+          if parent && !parent.end_class
             parent = nil
           end
 
-          if entity.class == parent_class
+          if parent && entity.is_a?(parent.end_class)
+            parent.end_object = entity
+            parent = nil
+            next
+          end
+
+          if entity.end_class
             parent = entity
             collection << entity
           else
@@ -178,9 +188,5 @@ module DXF
       end
     end
 
-    def create_handle
-      handle_int = header['$HANDSEED'].value.to_i(16)
-      header['$HANDSEED'].value = (handle_int + 1).to_s(16)
-    end
   end
 end

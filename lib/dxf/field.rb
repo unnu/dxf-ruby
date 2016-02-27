@@ -3,15 +3,17 @@ module DXF
     attr_accessor :marker
     attr_accessor :code
     attr_accessor :name
+    attr_accessor :default
     attr_accessor :serializer
     attr_accessor :deserializer
 
-    def initialize(marker, code, name, serializer, deserializer)
+    def initialize(marker, code, name, default = nil)
       @marker = marker
       @code = code
       @name = name
-      @serializer = serializer || Proc.new {|object, data| data.change(marker, code, object.send(name)) }
-      @deserializer = deserializer || Proc.new {|object, value| object.send("#{name}=", value) }
+      @default = default
+      @serializer = Proc.new {|object, data| data.change(marker, code, object.send(name)) }
+      @deserializer = Proc.new {|object, value| object.send("#{name}=", value) }
     end
 
     def deserialize(object, value)

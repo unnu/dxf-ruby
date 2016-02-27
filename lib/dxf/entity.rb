@@ -22,9 +22,9 @@ module DXF
       @marker = nil
     end
 
-    def self.field(code, name, &block)
+    def self.field(code, name, default = nil)
       attr_accessor name
-      fields[code] = Field.new(@marker, code, name, nil, block)
+      fields[code] = Field.new(@marker, code, name, default)
     end
 
     class << self
@@ -41,40 +41,40 @@ module DXF
       self.class.fields
     end
 
-    attr_accessor :type
-    attr_accessor :parser
-    attr_accessor :data
-    attr_accessor :acad
+    attr_accessor :dxf
 
-    def self.create(type, parser)
-      object = case type
-      when 'CIRCLE' then Circle.new
-      when 'LINE' then Line.new
-      when 'SPLINE' then Spline.new
-      when 'TEXT' then Text.new
-      when 'MTEXT' then MText.new
-      when 'ATTRIB' then Attribute.new
-      when 'ATTDEF' then AttributeDefinition.new
-      when 'SEQEND' then EndSequence.new
-      when 'INSERT' then Insert.new
-      when 'BLOCK' then Block.new
-      when 'ENDBLK' then EndBlock.new
-      when 'BLOCK_RECORD' then BlockRecord.new
-      when 'APPID' then AppId.new
-      when 'TABLE' then Table.new
-      when 'ENDTAB' then EndTable.new
-      when 'CLASS' then Klass.new
-      when 'LAYER' then Layer.new
-      else
-        self.new
-        # raise TypeError, "Unrecognized object type '#{type}'"
+    def self.register(type)
+      @@types ||= {}
+      @@types[type] = self
+      @type = type
+    end
+
+    def self.type
+      @type
+    end
+
+    def self.create(type, dxf)
+      klass = @@types[type]
+      klass ||= self
+
+      object = klass.new
+      object.type = type
+      object.dxf = dxf
+      object
+    end
+
+    field 0, :type
+
+    def initialize(fields = {})
+      self.type = self.class.type
+
+      self.fields.each do |_, field|
+        public_send("#{field.name}=", field.default) if field.default
       end
 
-      object.type = type
-      object.parser = parser
-      object.data = Data.new
-      object.acad = []
-      object
+      fields.each do |field, value|
+        public_send("#{field}=", value)
+      end
     end
 
     def parse_pair(code, value)
@@ -87,15 +87,11 @@ module DXF
     end
 
     def siblings
-      parser.references[soft_pointer]
+      dxf.references[soft_pointer]
     end
 
     def children
-      parser.references[handle]
-    end
-
-    def attributes
-      children.select {|s| s.is_a? Attribute }
+      dxf.references[handle]
     end
 
     def serialize
@@ -103,6 +99,14 @@ module DXF
         field.serialize(self, data)
       end
       data.serialize
+    end
+
+    def end_class
+      nil
+    end
+
+    def data
+      @data ||= Data.new
     end
 
     private
@@ -122,16 +126,28 @@ module DXF
   end
 
   class Layer < Object
+    register 'LAYER'
+
     marker 'AcDbLayerTableRecord' do
       field 2, :name
     end
   end
 
   class Klass < Object
+    register 'CLASS'
+
     field 1, :record_name
   end
 
+  class EndBlock < Entity
+    register 'ENDBLK'
+
+    include HasEntries
+  end
+
   class Block < Entity
+    register 'BLOCK'
+
     include HasEntries
 
     marker 'AcDbBlockBegin' do
@@ -139,54 +155,106 @@ module DXF
       field 2, :name
       field 1, :xref
     end
-  end
 
-  class EndBlock < Entity
-    include HasEntries
+    def block_record
+      dxf.types[DXF::BlockRecord].find {|block_record| block_record.block_name == name }
+    end
+
+    def inserts
+      dxf.types[DXF::Insert].select {|insert| insert.block_name == name }
+    end
+
+    def add(object)
+      case object
+      when AttributeDefinition
+        object.soft_pointer = block_record.handle
+        object.layer_name = layer_name
+      else
+        raise ArgumentError, "#{object.class} cannot be added to #{self.class}"
+      end
+      super
+    end
+
+    def end_class
+      EndBlock
+    end
   end
 
   class BlockRecord < Object
+    register 'BLOCK_RECORD'
+
     INSERT_UNITS = %i(inch feet mile millimeter centimeter meter kilometer
                       microinch mil yard angstrom nanometer micron decimeter
                       decameter hectometer gigameter astronomical-unit
                       light-year parsec)
 
-    field 5, :handle
+    field 5,   :handle
+    field 330, :soft_pointer
 
     marker'AcDbBlockTableRecord' do
-      field 2, :name
+      field 2, :block_name
       field 70, :insertation_units
       field 340, :hard_pointer
       field 280, :explodability
       field 281, :scalability
     end
+
+    def block
+      dxf.types[DXF::Block].find {|block| block.name == block_name }
+    end
   end
 
   class Attribute < Entity
-    include HasPoint
+    register 'ATTRIB'
 
     marker 'AcDbText' do
-      field 1,   :default
+      include HasPoint
+      field 1,  :default
+      field 40, :height, 1.0
+    end
+
+    marker 'AcDbAttribute' do
+      field 2,  :tag
+      field 70, :flags, 0
     end
   end
 
   class AttributeDefinition < Entity
+    register 'ATTDEF'
+
     marker 'AcDbText' do
       include HasPoint
       field 1,   :default
-      field 40,  :height
+      field 40,  :height, 1.0
     end
 
     marker 'AcDbAttributeDefinition' do
       field 2, :tag
       field 3, :prompt
     end
+
+    def block_record
+      dxf.handles[soft_pointer]
+    end
+
+    def new_attribute(fields = {})
+      attribute = Attribute.new
+      %i(height point layer_name default tag).each do |field|
+        attribute.public_send("#{field}=", fields[field] || public_send(field))
+      end
+      attribute
+    end
   end
 
   class EndSequence < Object
+    register 'SEQEND'
   end
 
   class Insert < Entity
+    register 'INSERT'
+
+    include HasEntries
+
     marker 'AcDbBlockReference' do
       field 66, :attributes_follow
       field 2,  :block_name
@@ -194,23 +262,47 @@ module DXF
     end
 
     def attributes
-      parser.references[handle]
+      dxf.references[handle]
     end
 
     def block
-      parser.object_names[block_name]
+      dxf.types[DXF::Block].find {|block| block.name == block_name }
+    end
+
+    def add(object)
+      case object
+      when Attribute
+        object.soft_pointer = handle
+      else
+        raise ArgumentError, "#{object.class} cannot be added to #{self.class}"
+      end
+      super
+    end
+
+    def end_class
+      EndSequence
     end
   end
 
   class Table < Object
+    register 'TABLE'
+
     include HasEntries
+
+    def end_class
+      EndTable
+    end
   end
 
   class EndTable < Object
+    register 'ENDTAB'
+
     include HasEntries
   end
 
   class Circle < Entity
+    register 'CIRCLE'
+
     include HasPoint
 
     marker 'AcDbCircle' do
@@ -223,6 +315,8 @@ module DXF
   end
 
   class Line < Entity
+    register 'LINE'
+
     marker 'AcDbLine' do
       field 39, :thickness
       include HasPoint
@@ -230,6 +324,8 @@ module DXF
   end
 
   class Polyline < Entity
+    register 'POLYLINE'
+
     include HasPoint
 
     attr_reader :closed
@@ -242,6 +338,8 @@ module DXF
   end
 
   class LWPolyline < Entity
+    register 'LWPOLYLINE'
+
     # @!attribute points
     # @return [Array<Point>] The points that make up the polyline
     attr_reader :points
@@ -257,6 +355,8 @@ module DXF
   end
 
   class Spline < Entity
+    register 'SPLINE'
+
     include HasPoint
 
     attr_reader :degree
@@ -271,6 +371,8 @@ module DXF
   end
 
   class Bezier < Spline
+    register 'BEZIER'
+
     # @!attribute degree
     # @return [Number] The degree of the curve
     def degree
@@ -308,6 +410,8 @@ module DXF
   end
 
   class Text < Entity
+    register 'TEXT'
+
     marker 'AcDbText' do
       include HasPoint
       field 1,   :default
@@ -316,6 +420,8 @@ module DXF
   end
 
   class MText < Entity
+    register 'MTEXT'
+
     ALIGNMENTS = %i(top_left top_center top_right
                    middle_left middle_center middle_right
                    bottom_left bottom_center bottom_right)
@@ -336,6 +442,8 @@ module DXF
   end
 
   class AppId < Object
+    register 'APPID'
+
     marker 'AcDbRegAppTableRecord' do
       field 2,  :application_name
       field 70, :flags
