@@ -11,29 +11,80 @@ module DXF
   class Object
     TypeError = Class.new(StandardError)
 
-    def self.inherited(subclass)
-      subclass.fields = fields.dup
-      super
-    end
-
-    def self.marker(name)
-      @marker = name
-      yield
-      @marker = nil
-    end
-
-    def self.field(code, name, default: nil, serialize: nil, deserialize: nil)
-      attr_accessor name
-      fields[code] = Field.new(@marker, code, name, default: default, serializer: serialize, deserializer: deserialize)
-    end
-
     class << self
+      def inherited(subclass)
+        subclass.fields = fields.dup
+        super
+      end
+
+      def marker(name)
+        @marker = name
+        yield
+        @marker = nil
+      end
+
+      def array(code, name = nil)
+        @array_code = code
+        @array_name = name
+        yield
+        @array_code = nil
+        @array_name = nil
+      end
+
+      def field_key(marker, code)
+        marker ? "#{marker}_#{code}" : code.to_s
+      end
+
+      def field(code, name, default: nil, serialize: nil, deserialize: nil)
+        fields[field_key(@marker, code)] = Field.new(
+          @marker,
+          code,
+          name,
+          default: default,
+          serializer: serialize,
+          deserializer: deserialize,
+          array_code: @array_code,
+          array_name: @array_name
+        )
+
+        if @array_code
+          attr_writer name
+          class_eval <<-end_eval, __FILE__, __LINE__
+            def #{name}
+              @#{name} ||= []
+            end
+          end_eval
+        else
+          attr_accessor name
+        end
+      end
+
       def fields
         @fields ||= {}
       end
 
       def fields=(fields)
         @fields = fields
+      end
+
+      def register(type)
+        @@types ||= {}
+        @@types[type] = self
+        @type = type
+      end
+
+      def type
+        @type
+      end
+
+      def create(type, dxf)
+        klass = @@types[type]
+        klass ||= self
+
+        object = klass.new
+        object.type = type
+        object.dxf = dxf
+        object
       end
     end
 
@@ -42,26 +93,6 @@ module DXF
     end
 
     attr_accessor :dxf
-
-    def self.register(type)
-      @@types ||= {}
-      @@types[type] = self
-      @type = type
-    end
-
-    def self.type
-      @type
-    end
-
-    def self.create(type, dxf)
-      klass = @@types[type]
-      klass ||= self
-
-      object = klass.new
-      object.type = type
-      object.dxf = dxf
-      object
-    end
 
     field 0, :type
 
@@ -78,12 +109,14 @@ module DXF
     end
 
     def parse_pair(code, value)
-      if field = self.class.fields[code.to_i]
-        field.deserialize(self, value)
-        return
-      end
+      code = code.to_i
+      @current_marker = value if code == 100
 
-      # p "Unrecognized object group code for type #{type}: (#{code}) #{value}"
+      if field = self.class.fields[self.class.field_key(@current_marker, code)]
+        field.deserialize(self, value)
+      else
+        # p "Unrecognized object group code for type #{type}: (#{code}) #{value}"
+      end
     end
 
     def siblings
@@ -193,10 +226,9 @@ module DXF
 
     marker'AcDbBlockTableRecord' do
       field 2, :block_name
-      field 70, :insertation_units
-      field 340, :hard_pointer
-      field 280, :explodability
-      field 281, :scalability
+      array 102, 'BLKREFS' do
+        field 331, :insert_soft_pointers
+      end
     end
 
     def block
@@ -225,6 +257,20 @@ module DXF
       field 2,  :tag
       field 70, :flags, default: 0
     end
+
+    def insert
+      dxf.handles[soft_pointer]
+    end
+
+    def remove
+      insert.remove_attribute(self)
+      self.soft_pointer = nil
+      self
+    end
+
+    def definition
+      insert.block.entries.select {|e| e.is_a?(DXF::AttributeDefinition) }.find {|e| e.tag == tag }
+    end
   end
 
   class AttributeDefinition < Entity
@@ -252,6 +298,10 @@ module DXF
       dxf.handles[soft_pointer]
     end
 
+    def block
+      block_record.block
+    end
+
     def new_attribute(fields = {})
       attribute = Attribute.new
 
@@ -265,9 +315,15 @@ module DXF
 
       attribute
     end
+
+    def remove
+      block.entries.delete(self)
+      self.soft_pointer = nil
+      self
+    end
   end
 
-  class EndSequence < Object
+  class EndSequence < Entity
     register 'SEQEND'
   end
 
@@ -282,26 +338,42 @@ module DXF
       include HasPoint
     end
 
-    def attributes
-      dxf.references[handle]
-    end
-
     def block
       dxf.types[DXF::Block].find {|block| block.name == block_name }
     end
 
     def add(object)
-      case object
-      when Attribute
-        object.soft_pointer = handle
-      else
-        raise ArgumentError, "#{object.class} cannot be added to #{self.class}"
-      end
+      raise ArgumentError, "#{object.class} cannot be added to #{self.class}" unless object.is_a?(Attribute)
+
+      object.soft_pointer = handle
+      object.layer_name = layer_name
+      self.attributes_follow = true
+
       super
     end
 
+    def remove_attribute(attribute)
+      entries.delete(attribute)
+      self.attributes_follow = entries.any?
+    end
+
+    def destroy
+      block.block_record.insert_soft_pointers.delete(handle)
+      dxf.entities.delete(self)
+    end
+
     def end_class
-      EndSequence
+      EndSequence if attributes_follow
+    end
+
+    def end_object
+      if attributes_follow
+        @end_object ||= EndSequence.new.tap do |end_sequence|
+          end_sequence.handle = dxf.create_handle
+          end_sequence.soft_pointer = handle
+          end_sequence.layer_name = layer_name
+        end
+      end
     end
   end
 
@@ -324,9 +396,8 @@ module DXF
   class Circle < Entity
     register 'CIRCLE'
 
-    include HasPoint
-
     marker 'AcDbCircle' do
+      include HasPoint
       field 40, :radius
     end
 
@@ -339,15 +410,18 @@ module DXF
     register 'LINE'
 
     marker 'AcDbLine' do
-      field 39, :thickness
       include HasPoint
+      include HasPoint2
+      field 39, :thickness
+    end
+
+    def length
+      distance(point2)
     end
   end
 
   class Polyline < Entity
     register 'POLYLINE'
-
-    include HasPoint
 
     attr_reader :closed
     attr_accessor :points
@@ -377,8 +451,6 @@ module DXF
 
   class Spline < Entity
     register 'SPLINE'
-
-    include HasPoint
 
     attr_reader :degree
     attr_reader :knots
@@ -444,8 +516,8 @@ module DXF
     register 'MTEXT'
 
     ALIGNMENTS = %i(top_left top_center top_right
-                   middle_left middle_center middle_right
-                   bottom_left bottom_center bottom_right)
+                    middle_left middle_center middle_right
+                    bottom_left bottom_center bottom_right)
     DIRECTIONS = %i(left_to_right top_to_bottom by_style)
     SPACING_STYLE = %i(at_least exact)
 
