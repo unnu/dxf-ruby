@@ -72,6 +72,8 @@ module DXF
                 value == '1'
               when 70..78, 90..99, 270..289
                 value.to_i
+              when 100
+                value.strip
               else
                 value
               end
@@ -124,45 +126,32 @@ module DXF
 
       parse_pairs io do |code, value|
         if 0 == code.to_i
-          if 'ENDSEC' == value
-            parent = nil
-            end_parent = nil
-            next
+          if parent
+            # parent = nil unless parent.end_class
+
+            if entity.is_a?(parent.end_class)
+              parent.end_object = entity
+              parent = nil
+            else
+              parent.entries << entity
+            end
+          elsif entity
+            parent = entity if entity.end_class
+            collection << entity
           end
 
-          if entity
-            indicate(entity)
-            entity = nil
+          indicate(entity) if entity
+
+          if 'ENDSEC' == value
+            parent = nil
+            next
           end
 
           entity = Object.create(value, self)
-          entity.data.push(code, value)
-          entity.parse_pair(code, value)
-
-          if parent && !parent.end_class
-            parent = nil
-          end
-
-          if parent && entity.is_a?(parent.end_class)
-            parent.end_object = entity
-            parent = nil
-            next
-          end
-
-          if entity.end_class
-            parent = entity
-            collection << entity
-          else
-            if parent
-              parent.entries << entity
-            else
-              collection << entity
-            end
-          end
-        else
-          entity.data.push(code, value)
-          entity.parse_pair(code, value)
         end
+
+        entity.data.push(code, value)
+        entity.parse_pair(code, value)
       end
     end
 
