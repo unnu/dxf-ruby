@@ -258,8 +258,8 @@ module DXF
     end
 
     marker 'AcDbAttribute' do
-      field 2,  :tag
-      field 70, :flags, default: 0
+      field 2,   :tag
+      field 70,  :flags, default: 0
     end
 
     def insert
@@ -284,7 +284,7 @@ module DXF
 
     marker 'AcDbText' do
       include HasPoint
-      field 1,  :default
+      field 1,  :default, default: '-'
       field 7,  :style
       field 40, :height, default: 1.0
       field 41, :width
@@ -294,8 +294,10 @@ module DXF
     end
 
     marker 'AcDbAttributeDefinition' do
-      field 2, :tag
-      field 3, :prompt
+      field 280, :version, default: 0
+      field 2,   :tag
+      field 70,  :flags, default: 0
+      field 3,   :prompt
     end
 
     def block_record
@@ -337,7 +339,7 @@ module DXF
     include HasEntries
 
     marker 'AcDbBlockReference' do
-      field 66, :attributes_follow
+      field 66, :attributes_follow, default: false
       field 2,  :block_name
       include HasPoint
     end
@@ -521,6 +523,12 @@ module DXF
       field 72, :justify_x,
         serialize:   ->(object) { JUSTIFICATION_X.index(object.justify_x) },
         deserialize: ->(object, value) { JUSTIFICATION_X[value] }
+    end
+
+    def serialize
+      data = super
+      data << [100, "AcDbText"]
+      data
     end
   end
 

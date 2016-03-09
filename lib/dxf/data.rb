@@ -44,7 +44,7 @@ module DXF
       end
       index ||= sub_data.size
 
-      if value
+      unless value.nil?
         sub_data[index] = [code, value]
       else
         sub_data.delete_at(index)

@@ -14,7 +14,7 @@ module DXF
       @code = code
       @name = name
       @default = default
-      @serializer = serializer || Proc.new {|object| object.send(name) }
+      @serializer = serializer || Proc.new {|object| object.send(name) || default }
       @deserializer = deserializer || Proc.new {|object, value| value }
       @array_code = array_code
       @array_name = array_name

@@ -44,6 +44,7 @@ module DXF
     def create_handle
       handle_int = header['$HANDSEED'].value.to_i(16)
       header['$HANDSEED'].value = (handle_int + 1).to_s(16)
+      handle_int
     end
 
     def inspect
