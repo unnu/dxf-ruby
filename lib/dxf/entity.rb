@@ -150,11 +150,14 @@ module DXF
   end
 
   class Entity < Object
+    COLOR_BYLAYER = 256
+
     field 5, :handle
     field 330, :soft_pointer
 
     marker 'AcDbEntity' do
-      field 8, :layer_name
+      field 8,  :layer_name
+      field 62, :color
     end
   end
 
@@ -200,11 +203,12 @@ module DXF
     def add(object)
       case object
       when AttributeDefinition
-        object.soft_pointer = block_record.handle
-        object.layer_name = layer_name
+      when Text
       else
         raise ArgumentError, "#{object.class} cannot be added to #{self.class}"
       end
+      object.soft_pointer = block_record.handle
+      object.layer_name = layer_name
       super
     end
 
@@ -505,10 +509,18 @@ module DXF
   class Text < Entity
     register 'TEXT'
 
+    JUSTIFICATION_X = %i(left center right aligned middle fit)
+
     marker 'AcDbText' do
       include HasPoint
-      field 1,   :default
-      field 40,  :height
+      include HasPoint2
+      field 1,  :default
+      field 7,  :style
+      field 40, :height, default: 1.0
+      field 41, :width
+      field 72, :justify_x,
+        serialize:   ->(object) { JUSTIFICATION_X.index(object.justify_x) },
+        deserialize: ->(object, value) { JUSTIFICATION_X[value] }
     end
   end
 
