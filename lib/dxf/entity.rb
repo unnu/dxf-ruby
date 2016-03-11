@@ -204,6 +204,7 @@ module DXF
       case object
       when AttributeDefinition
       when Text
+      when MText
       else
         raise ArgumentError, "#{object.class} cannot be added to #{self.class}"
       end
@@ -244,6 +245,7 @@ module DXF
     register 'ATTRIB'
 
     JUSTIFICATION_X = %i(left center right aligned middle fit)
+    JUSTIFICATION_Y = %i(baseline bottom middle top)
 
     marker 'AcDbText' do
       include HasPoint
@@ -260,6 +262,9 @@ module DXF
     marker 'AcDbAttribute' do
       field 2,   :tag
       field 70,  :flags, default: 0
+      field 74, :justify_y,
+        serialize:   ->(object) { JUSTIFICATION_Y.index(object.justify_x) },
+        deserialize: ->(object, value) { JUSTIFICATION_Y[value] }
     end
 
     def insert
@@ -281,6 +286,7 @@ module DXF
     register 'ATTDEF'
 
     JUSTIFICATION_X = %i(left center right aligned middle fit)
+    JUSTIFICATION_Y = %i(baseline bottom middle top)
 
     marker 'AcDbText' do
       include HasPoint
@@ -298,6 +304,9 @@ module DXF
       field 2,   :tag
       field 70,  :flags, default: 0
       field 3,   :prompt
+      field 74, :justify_y,
+        serialize:   ->(object) { JUSTIFICATION_Y.index(object.justify_x) },
+        deserialize: ->(object, value) { JUSTIFICATION_Y[value] }
     end
 
     def block_record
@@ -544,13 +553,32 @@ module DXF
     marker 'AcDbMText' do
       include HasPoint
       field 1,  :text
-      field 41, :reference_rectangle_width
+      field 7,  :style
+      field 40, :height, default: 1.0
+      field 41, :width
+      field 71, :align,
+        serialize:   ->(object) { ALIGNMENTS.index(object.align) + 1 },
+        deserialize: ->(object, value) { ALIGNMENTS[value - 1] }
+    end
+
+    def block_record
+      dxf.handles[soft_pointer]
+    end
+
+    def block
+      block_record.block
     end
 
     def cleaned
       text
         .gsub(/\\(\w).*?(.*?)(;|$)/, "") # remove commands
         .gsub!(/[{}]/, "") # remove groups
+    end
+
+    def remove
+      block.entries.delete(self)
+      self.soft_pointer = nil
+      self
     end
   end
 
