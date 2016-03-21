@@ -254,6 +254,7 @@ module DXF
       field 7,  :style
       field 40, :height, default: 1.0
       field 41, :width
+      field 50, :rotation
       field 72, :justify_x,
         serialize:   ->(object) { JUSTIFICATION_X.index(object.justify_x) },
         deserialize: ->(object, value) { JUSTIFICATION_X[value] }
@@ -294,6 +295,7 @@ module DXF
       field 7,  :style
       field 40, :height, default: 1.0
       field 41, :width
+      field 50, :rotation
       field 72, :justify_x,
         serialize:   ->(object) { JUSTIFICATION_X.index(object.justify_x) },
         deserialize: ->(object, value) { JUSTIFICATION_X[value] }
@@ -304,7 +306,7 @@ module DXF
       field 2,   :tag
       field 70,  :flags, default: 0
       field 3,   :prompt
-      field 74, :justify_y,
+      field 74,  :justify_y,
         serialize:   ->(object) { JUSTIFICATION_Y.index(object.justify_x) },
         deserialize: ->(object, value) { JUSTIFICATION_Y[value] }
     end
@@ -320,7 +322,7 @@ module DXF
     def new_attribute(fields = {})
       attribute = Attribute.new
 
-      %i(justify_x width style height point layer_name default tag).each do |name|
+      %i(justify_x justify_y rotation width style height point layer_name default tag).each do |name|
         attribute.public_send("#{name}=", public_send(name))
       end
 
